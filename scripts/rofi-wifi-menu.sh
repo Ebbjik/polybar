@@ -1,16 +1,31 @@
 #!/bin/bash
 
-# 显示“正在扫描，请稍候...”提示
-rofi -e "正在扫描，请稍候..."
+# 加载提示，最多持续 5 秒
+timeout 5s bash -c 'echo "正在扫描，请稍候..." | rofi --no-lazy-grab -dmenu -p "Wi-Fi" -lines 1' &
+scan_pid=$!
 
-# 触发扫描并等待1秒
-nmcli dev wifi rescan >/dev/null 2>&1 &
-sleep 1
+# 触发 Wi-Fi 扫描
+nmcli dev wifi rescan >/dev/null 2>&1
 
-# 获取 Wi-Fi 列表
-wifi_list=$(nmcli -f SSID,SIGNAL dev wifi | tail -n +2 | grep -v '^--' | awk 'NF >= 2')
+# 最多等待 5 秒，每 0.5 秒检查一次 Wi-Fi 列表是否有数据
+for i in {1..10}; do
+  sleep 0.5
+  wifi_list=$(nmcli -f SSID,SIGNAL dev wifi | tail -n +2 | grep -v '^--' | awk 'NF >= 2')
+  if [ -n "$wifi_list" ]; then
+    break
+  fi
+done
 
-# 按 SSID 分组，取信号最强的
+# 杀掉加载提示（即使已经退出也无妨）
+kill "$scan_pid" 2>/dev/null
+
+# 如果仍然没有 Wi-Fi 网络，提示错误
+if [ -z "$wifi_list" ]; then
+  rofi --no-lazy-grab -e "未发现任何 Wi-Fi 网络"
+  exit 1
+fi
+
+# 选择信号最强的网络（去重并排序）
 top_networks=$(echo "$wifi_list" | awk '
 {
     signal[$1] = ($2 > signal[$1]) ? $2 : signal[$1];
@@ -21,10 +36,10 @@ END {
 }
 ' | sort)
 
-# rofi 选择
-selected=$(echo "$top_networks" | rofi -dmenu -p "Select Wi-Fi Network:")
+# 弹出 Rofi 供用户选择网络
+selected=$(echo "$top_networks" | rofi --no-lazy-grab -dmenu -p "选择 Wi-Fi 网络")
 
-# 尝试连接
+# 连接 Wi-Fi
 if [ -n "$selected" ]; then
   nmcli dev wifi connect "$selected"
 fi

@@ -1,26 +1,18 @@
 #!/bin/bash
 
-DEVICE=$(wpctl status | grep -A 5 'Sinks:' | grep '\*' | sed 's/│//g' | awk '{print $2}')
+DEFAULT_SINK=$(pactl info | grep 'Default Sink' | cut -d ':' -f2 | xargs)
 
-if [ -z "$DEVICE" ]; then
-  echo "无法获取默认音频设备ID"
-  exit 1
-fi
+muted=$(pactl get-sink-mute "$DEFAULT_SINK" | awk '{print $2}')
+vol=$(pactl get-sink-volume "$DEFAULT_SINK" | head -n1 | grep -oP '\d+?(?=%)' | head -n1)
 
-muted=$(wpctl get-mute "$DEVICE")
-vol=$(wpctl get-volume "$DEVICE" | awk '{print $2}')
-
-vol_percent=0
-if [ -n "$vol" ]; then
-  vol_percent=$(awk "BEGIN {printf \"%d\", $vol * 100}")
-fi
-
-if [ "$muted" = "true" ] || [ "$vol_percent" -eq 0 ]; then
-  icon=""
-elif [ "$vol_percent" -le 50 ]; then
-  icon=""
+if [ "$muted" = "yes" ]; then
+  icon="" # 静音图标，只显示图标
+  echo "$icon"
 else
-  icon=""
+  if [ "$vol" -le 50 ]; then
+    icon=""
+  else
+    icon=""
+  fi
+  echo "$icon $vol%"
 fi
-
-echo "$icon $vol_percent%"
